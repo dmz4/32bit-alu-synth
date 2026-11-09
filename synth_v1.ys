@@ -1,0 +1,11 @@
+# File: synth_v1.ys
+# Author: Diego Dominguez
+# Hierarchy: synthesis flow for top-level module alu_v1.
+# Function: checks hierarchy, performs generic synthesis, and writes BLIF.
+# Parameters: none. Clock domains: none; the synthesized RTL is combinational.
+# Timing: the reported b[1] to result[31] path is documented in README.md.
+read_verilog alu_v1.v
+hierarchy -check -top alu_v1
+synth -top alu_v1
+
+write_blif alu_v1.blif
