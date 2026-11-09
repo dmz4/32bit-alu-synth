@@ -1,94 +1,92 @@
-# ALU de 32 bits
+# 32-bit ALU
 
-ALU combinacional de 32 bits implementada en Verilog. El resultado depende
-directamente de los operandos `a` y `b` y del selector `op`; no hay registros
-ni señal de reloj.
+A 32-bit combinational ALU implemented in Verilog. The result depends directly
+on operands `a` and `b` and the operation selector `op`; the design has no
+registers or clock.
 
-## Arquitectura
+## Architecture
 
 ```mermaid
 flowchart LR
     A(a: 32 bits) -->|"a [31:0]"| ALU
     B(b: 32 bits) -->|"b [31:0]"| ALU
-    OP(op: 4 bits) -->|"op [3:0]"| DEC[Decodificador de operación]
-    DEC -->|selección de operación| ALU
+    OP(op: 4 bits) -->|"op [3:0]"| DEC[Operation decoder]
+    DEC -->|operation select| ALU
 
     subgraph DATAPATH[Datapath]
-        ALU[/ ALU de 32 bits \]
+        ALU[/ 32-bit ALU \]
         ALU -->|"result [31:0]"| R(result: 32 bits)
     end
 ```
 
 ### Datapath
 
-El bloque ALU implementa suma, resta, operaciones bit a bit, desplazamientos
-de un bit y comparación con signo. El resultado seleccionado se entrega por
-`result`.
+The ALU block implements addition, subtraction, bitwise operations, one-bit
+shifts, and signed comparison. The selected result is available on `result`.
 
 ### Control
 
-El campo `op` selecciona la operación. Los códigos no listados en la tabla
-producen cero.
+The `op` field selects the operation. Unlisted operation codes produce zero.
 
-## Interfaz
+## Interface
 
-| Puerto | Dirección | Ancho | Descripción |
+| Port | Direction | Width | Description |
 |---|---|---:|---|
-| `a` | Entrada | 32 bits | Primer operando |
-| `b` | Entrada | 32 bits | Segundo operando |
-| `op` | Entrada | 4 bits | Código de operación |
-| `result` | Salida | 32 bits | Resultado de la operación |
+| `a` | Input | 32 bits | First operand |
+| `b` | Input | 32 bits | Second operand |
+| `op` | Input | 4 bits | Operation code |
+| `result` | Output | 32 bits | Operation result |
 
-El módulo no tiene parámetros, reloj, reset ni estado interno. `result` se
-declara como `reg` porque se asigna dentro de un bloque `always`; esto no
-implica almacenamiento, ya que el bloque es combinacional.
+The module has no parameters, clock, reset, or internal state. `result` is
+declared as `reg` because it is assigned in an `always` block; this does not
+imply storage, since the block is combinational.
 
-## Operaciones
+## Operations
 
-| `op` | Operación | Resultado |
+| `op` | Operation | Result |
 |---|---|---|
-| `0000` | Suma | `a + b` |
-| `0001` | Resta | `a - b` |
+| `0000` | Addition | `a + b` |
+| `0001` | Subtraction | `a - b` |
 | `0010` | AND | `a & b` |
 | `0011` | OR | `a | b` |
 | `0100` | XOR | `a ^ b` |
 | `0101` | NOT | `~a` |
-| `0110` | Desplazamiento a la izquierda | `a << 1` |
-| `0111` | Desplazamiento a la derecha | `a >> 1` |
-| `1000` | Menor que con signo (SLT) | `1` si `$signed(a) < $signed(b)`; de lo contrario, `0` |
-| Otros | Operación no definida | `0` |
+| `0110` | Shift left | `a << 1` |
+| `0111` | Shift right | `a >> 1` |
+| `1000` | Signed less than (SLT) | `1` if `$signed(a) < $signed(b)`; otherwise `0` |
+| Other | Undefined operation | `0` |
 
 
 
-## Archivos
+## Files
 
-| Archivo | Descripción |
+| File | Description |
 |---|---|
-| [`alu_v1.v`](./alu_v1.v) | RTL del módulo combinacional `alu_v1`. |
-| [`tb.v`](./tb.v) | Testbench que aplica 100 vectores aleatorios, imprime resultados y genera `tb.vcd`. |
-| [`synth_v1.ys`](./synth_v1.ys) | Script de Yosys para leer el RTL, verificar la jerarquía, sintetizar `alu_v1` y escribir `alu_v1.blif`. |
-| `NangateOpenCellLibrary_typical.lib` | Biblioteca de celdas estándar incluida; su contenido no se documenta aquí. El script actual no la carga ni realiza mapeo tecnológico hacia ella. |
+| [`alu_v1.v`](./alu_v1.v) | RTL for the combinational `alu_v1` module. |
+| [`tb.v`](./tb.v) | Testbench that applies 100 random vectors, prints results, and generates `tb.vcd`. |
+| [`synth_v1.ys`](./synth_v1.ys) | Yosys script that reads the RTL, checks the hierarchy, synthesizes `alu_v1`, and writes `alu_v1.blif`. |
+| `NangateOpenCellLibrary_typical.lib` | Included standard-cell library. Its contents are intentionally not documented here. The current script does not load it or perform technology mapping with it. |
 
-## Simulación y síntesis
+## Simulation and Synthesis
 
-Desde esta carpeta, la simulación puede ejecutarse con Icarus Verilog:
+From this directory, run the simulation with Icarus Verilog:
 
 ```sh
 iverilog -o tb.vvp alu_v1.v tb.v
 vvp tb.vvp
 ```
 
-El testbench muestra los operandos, el selector y el resultado mediante
-`$monitor`, y escribe la forma de onda en `tb.vcd`. Las entradas son aleatorias.
+The testbench displays the operands, selector, and result using `$monitor`,
+and writes the waveform to `tb.vcd`. Inputs are randomized.
 
-Primero, Yosys realiza la síntesis genérica y genera el netlist BLIF:
+First, Yosys performs generic synthesis and generates the BLIF netlist:
 
 ```sh
 yosys -s synth_v1.ys
 ```
 
-Después, `yosys-abc` carga la biblioteca Nangate, lee el BLIF, optimiza el
-grafo lógico, realiza el mapeo tecnológico y reporta el retardo y la ruta:
+Next, `yosys-abc` loads the Nangate library, reads the BLIF, optimizes the
+logic graph, performs technology mapping, and reports the delay and path:
 
 ```text
 yosys-abc
@@ -100,51 +98,48 @@ stime
 print_delay
 ```
 
-Ejecuta ambos pasos desde esta carpeta. El `.ys` genera `alu_v1.blif`; la
-biblioteca `.lib` se carga por separado en ABC y no se modifica. No se asignaron
-restricciones de temporización de ningún tipo: no hay período de reloj ni
-retardos de entrada/salida. `stime` y `print_delay` reportan el retardo
-estimado por ABC según la biblioteca cargada, no un análisis contra
-restricciones de diseño.
+Run both steps from this directory. The `.ys` script generates `alu_v1.blif`;
+the `.lib` library is loaded separately in ABC and is not modified. No timing
+constraints are applied: there is no clock period or input/output delay.
+`stime` and `print_delay` report the delay estimated by ABC using the loaded
+library, not an analysis against design constraints.
 
-## Métricas de síntesis reportadas
+## Reported Synthesis Metrics
 
-Resultados proporcionados para la ejecución ABC:
+Results provided for the ABC run:
 
-| Métrica | Valor |
+| Metric | Value |
 |---|---:|
 | Wire load | `none` |
 | Gates | 601 (20.8 %) |
-| Capacitancia | 3.6 ff (0.0 %) |
-| Área | 596.64 (100.0 %) |
+| Capacitance | 3.6 ff (0.0 %) |
+| Area | 596.64 (100.0 %) |
 | Delay | 1001.73 ps (16.0 %) |
 
-Estas cifras corresponden al flujo ABC descrito arriba para la ALU actual.
-Los porcentajes se transcriben tal como fueron reportados. No se aplicaron
-restricciones temporales.
+These figures correspond to the ABC flow described above for the current ALU.
+Percentages are transcribed as reported. No timing constraints were applied.
 
-## Análisis del camino crítico
+## Critical Path Analysis
 
-Camino reportado: entrada primaria `b[1]` a salida primaria `result[31]`.
-La tabla conserva las celdas, pines, tiempos de llegada y tiempos I/O del
-reporte ABC. Los tiempos se expresan en picosegundos.
+Reported path: primary input `b[1]` to primary output `result[31]`. The table
+preserves the cells, pins, arrival times, and I/O times from the ABC report.
+Times are expressed in picoseconds.
 
-La larga cadena de celdas combinacionales sigue siendo consistente con una
-dependencia de acarreo que atraviesa varios bits. El RTL actualizado usa
-comparación con signo en SLT. El reporte de celdas por sí solo no permite
-atribuir el camino a suma, resta o SLT: la lógica puede compartirse o
-reestructurarse durante la síntesis y el mapeo. Para confirmarlo se requiere
-aislar operaciones o comparar implementaciones alternativas.
+The long chain of combinational cells is consistent with a carry dependency
+propagating across multiple bits. The RTL uses signed comparison for SLT.
+The cell report alone does not identify whether the path belongs to addition,
+subtraction, or SLT: logic may be shared or restructured during synthesis and
+mapping. Isolating operations or comparing alternative implementations is
+needed to confirm its source.
 
-Una experimentación posterior puede reemplazar la implementación del
-acarreo por otra arquitectura de sumador y volver a ejecutar exactamente el
-mismo flujo ABC. Para que la comparación sea válida, conserva la misma
-biblioteca, los mismos comandos de mapeo y la ausencia de restricciones, y
-compara tanto el retardo (`stime`) como el área y la cantidad de celdas.
+Future experiments can replace the carry implementation with another adder
+architecture and rerun the same ABC flow. For a valid comparison, keep the
+same library, mapping commands, and lack of constraints, and compare delay
+(`stime`), area, and cell count.
 
-| Nivel | Celda/pin | Tipo | Tiempos I/O (ps) | Llegada (ps) |
+| Level | Cell/pin | Type | I/O times (ps) | Arrival (ps) |
 |---:|---|---|---|---:|
-| 0 | Entrada primaria `b[1]` | — | — | 0.0 |
+| 0 | Primary input `b[1]` | — | — | 0.0 |
 | 1 | `n285/A` | `INV_X1` | `0.0 -> 15.2` | 15.2 |
 | 2 | `n286/A1` | `NAND2_X1` | `15.2, 0.0 -> 35.3` | 35.3 |
 | 3 | `n375/A2` | `NAND2_X1` | `35.3, 35.3 -> 58.0` | 58.0 |
@@ -180,9 +175,9 @@ compara tanto el retardo (`stime`) como el área y la cantidad de celdas.
 | 33 | `n688/A1` | `AND3_X1` | `903.8, 71.6, 59.3 -> 940.4` | 940.4 |
 | 34 | `n690/B1` | `OAI21_X1` | `66.8, 940.4, 933.8 -> 970.6` | 970.6 |
 | 35 | `n701/A1` | `NAND2_X1` | `970.6, 961.8 -> 990.7` | 990.7 |
-| 36 | Salida primaria `result[31]` | — | — | — |
+| 36 | Primary output `result[31]` | — | — | — |
 
-Para el nivel 36, el reporte indica tiempo requerido de `-1000000000.0 ps` y
-slack de `-1000000960.0 ps`. Se muestran literalmente como los entrega ABC;
-al no existir restricciones temporales, esos valores no deben interpretarse
-como una violación de un período de reloj objetivo.
+At level 36, the report gives a required time of `-1000000000.0 ps` and slack
+of `-1000000960.0 ps`. These values are shown exactly as reported by ABC; since
+there are no timing constraints, they should not be interpreted as a violation
+of a target clock period.
