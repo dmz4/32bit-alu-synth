@@ -1,32 +1,46 @@
 # 32-bit ALU
 
-A 32-bit combinational ALU implemented in Verilog. The result depends directly
-on operands `a` and `b` and the operation selector `op`; the design has no
-registers or clock.
+A 32-bit combinational ALU project with two implementations. `alu_v1` uses
+Verilog arithmetic and comparison operators; `alu_v2` uses a grouped
+lookahead carry adder (LCA) for addition, subtraction, and signed less-than.
+Neither design has registers or a clock.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A(a: 32 bits) -->|"a [31:0]"| ALU
-    B(b: 32 bits) -->|"b [31:0]"| ALU
-    OP(op: 4 bits) -->|"op [3:0]"| DEC[Operation decoder]
-    DEC -->|operation select| ALU
+    A(a: 32 bits) -->|"a [31:0]"| V1[ALU v1]
+    A -->|"a [31:0]"| V2[ALU v2]
+    B(b: 32 bits) -->|"b [31:0]"| V1
+    B -->|"b [31:0]"| V2
+    OP(op: 4 bits) -->|"op [3:0]"| DEC{Operation select}
+    DEC -->|operation select| V1
+    DEC -->|operation select| V2
 
     subgraph DATAPATH[Datapath]
-        ALU[/ 32-bit ALU \]
-        ALU -->|"result [31:0]"| R(result: 32 bits)
+        V1 -->|"result [31:0]"| R1(alu_v1 result)
+        V2 -->|"result [31:0]"| R2(alu_v2 result)
     end
 ```
 
 ### Datapath
 
-The ALU block implements addition, subtraction, bitwise operations, one-bit
-shifts, and signed comparison. The selected result is available on `result`.
+Both ALU implementations provide addition, subtraction, bitwise operations,
+one-bit shifts, and signed comparison.
+
+`alu_v1` expresses addition, subtraction, and signed comparison with Verilog
+operators. `alu_v2` instantiates separate `add_lca` blocks for addition and
+two's-complement subtraction. Its signed less-than result is derived from the
+subtraction result and the signed overflow condition.
+
+The 32-bit LCA is divided into eight 4-bit groups. Each group computes local
+generate/propagate terms, and the parent adder computes lookahead carries
+between groups.
 
 ### Control
 
-The `op` field selects the operation. Unlisted operation codes produce zero.
+The `op` field selects the operation in either ALU. Unlisted operation codes
+produce zero.
 
 ## Interface
 
@@ -37,9 +51,10 @@ The `op` field selects the operation. Unlisted operation codes produce zero.
 | `op` | Input | 4 bits | Operation code |
 | `result` | Output | 32 bits | Operation result |
 
-The module has no parameters, clock, reset, or internal state. `result` is
-declared as `reg` because it is assigned in an `always` block; this does not
-imply storage, since the block is combinational.
+Both top-level modules use the same interface and have no parameters, clock,
+reset, or internal state. `result` is declared as `reg` because it is assigned
+in an `always` block; this does not imply storage, since the block is
+combinational.
 
 ## Operations
 
@@ -56,37 +71,89 @@ imply storage, since the block is combinational.
 | `1000` | Signed less than (SLT) | `1` if `$signed(a) < $signed(b)`; otherwise `0` |
 | Other | Undefined operation | `0` |
 
+## Lookahead Carry Adder Architecture
 
+```mermaid
+flowchart LR
+    A(A) -->|"A [31:0]"| GROUPS
+    B(B) -->|"B [31:0]"| GROUPS
+
+    subgraph LCA[add_lca]
+        GROUPS[Eight add_lca_4bits groups]
+        GROUPS -->|"Gsg, Psg [7:0]"| CARRY[Group carry lookahead]
+        CARRY -->|"group carries c [6:0]"| GROUPS
+    end
+
+    GROUPS -->|"Y [31:0]"| SUM(Y)
+    CIN(Cin) -->|"Cin"| CARRY
+    CARRY -->|"Cout"| COUT(Cout)
+```
+
+Each four-bit group computes its local sum, group-generate, and
+group-propagate signals. The parent module uses the group signals and `Cin`
+to calculate carry inputs for the groups and the final `Cout`.
+
+## LCA Modules and Parameters
+
+| Module | Parameter | Default | Description |
+|---|---|---:|---|
+| `add_lca` | `N` | 32 | Operand width; this implementation is wired for a 32-bit adder made of eight 4-bit groups. |
+| `add_lca_4bits` | `N` | 4 | Group width; this implementation is wired for a four-bit slice. |
+
+### `add_lca` Ports
+
+| Port | Direction | Width | Description |
+|---|---|---:|---|
+| `A`, `B` | Input | `N` bits (32 in this design) | Operands |
+| `Cin` | Input | 1 bit | Input carry |
+| `Y` | Output | `N` bits (32 in this design) | Sum |
+| `Cout` | Output | 1 bit | Final carry |
+
+### `add_lca_4bits` Ports
+
+| Port | Direction | Width | Description |
+|---|---|---:|---|
+| `A`, `B` | Input | `N` bits (4 in this design) | Group operands |
+| `Cin` | Input | 1 bit | Group input carry |
+| `Gg` | Output | 1 bit | Group-generate signal |
+| `Pg` | Output | 1 bit | Group-propagate signal |
+| `Y` | Output | `N` bits (4 in this design) | Group sum |
 
 ## Files
 
 | File | Description |
 |---|---|
-| [`alu_v1.v`](./alu_v1.v) | RTL for the combinational `alu_v1` module. |
-| [`tb.v`](./tb.v) | Testbench that applies 100 random vectors, prints results, and generates `tb.vcd`. |
-| [`synth_v1.ys`](./synth_v1.ys) | Yosys script that reads the RTL, checks the hierarchy, synthesizes `alu_v1`, and writes `alu_v1.blif`. |
-| `NangateOpenCellLibrary_typical.lib` | Included standard-cell library. Its contents are intentionally not documented here. The current script does not load it or perform technology mapping with it. |
+| [`alu_v1.v`](./alu_v1.v) | RTL for the combinational ALU using Verilog arithmetic and comparison operators. |
+| [`alu_v2.v`](./alu_v2.v) | RTL for the ALU using the lookahead carry adder. |
+| [`add_lca.v`](./add_lca.v) | 32-bit grouped lookahead carry adder. |
+| [`add_lca_4bits.v`](./add_lca_4bits.v) | Four-bit lookahead carry group used by `add_lca`. |
+| [`tb.v`](./tb.v) | Testbench that drives both ALUs with 100 shared random input vectors and generates `tb.vcd`. |
+| [`synth_v1.ys`](./synth_v1.ys) | Yosys script that synthesizes `alu_v1` and writes `alu_v1.blif`. |
+| [`synth_v2.ys`](./synth_v2.ys) | Yosys script that synthesizes `alu_v2` and its LCA dependencies and writes `alu_v2.blif`. |
+| `NangateOpenCellLibrary_typical.lib` | Included standard-cell library, loaded separately by ABC; the library file is not modified by the flow. |
 
 ## Simulation and Synthesis
 
-From this directory, run the simulation with Icarus Verilog:
+From this directory, compile and run the testbench with Icarus Verilog:
 
 ```sh
-iverilog -o tb.vvp alu_v1.v tb.v
+iverilog -o tb.vvp alu_v1.v alu_v2.v add_lca.v add_lca_4bits.v tb.v
 vvp tb.vvp
 ```
 
-The testbench displays the operands, selector, and result using `$monitor`,
-and writes the waveform to `tb.vcd`. Inputs are randomized.
+The testbench applies the same 100 randomized operand and operation vectors to
+both ALUs and prints their results with `$monitor`. The waveform is written to
+`tb.vcd`. The testbench does not assert that the results match.
 
-First, Yosys performs generic synthesis and generates the BLIF netlist:
+Run the matching Yosys script to generate each generic BLIF netlist:
 
 ```sh
 yosys -s synth_v1.ys
+yosys -s synth_v2.ys
 ```
 
-Next, `yosys-abc` loads the Nangate library, reads the BLIF, optimizes the
-logic graph, performs technology mapping, and reports the delay and path:
+Then run ABC separately for each implementation, using its corresponding
+BLIF file:
 
 ```text
 yosys-abc
@@ -98,28 +165,30 @@ stime
 print_delay
 ```
 
-Run both steps from this directory. The `.ys` script generates `alu_v1.blif`;
-the `.lib` library is loaded separately in ABC and is not modified. No timing
-constraints are applied: there is no clock period or input/output delay.
-`stime` and `print_delay` report the delay estimated by ABC using the loaded
-library, not an analysis against design constraints.
+For `alu_v2`, replace `alu_v1.blif` in the ABC command with `alu_v2.blif`.
+Run the commands from this directory. ABC loads the `.lib` file separately;
+it is not modified by synthesis or mapping. No timing constraints are applied:
+there is no clock period or input/output delay. `stime` and `print_delay`
+report the delay estimated by ABC using the loaded library, not an analysis
+against design constraints.
 
 ## Reported Synthesis Metrics
 
-Results provided for the ABC run:
+Results provided for both ABC runs:
 
-| Metric | Value |
-|---|---:|
-| Wire load | `none` |
-| Gates | 601 (20.8 %) |
-| Capacitance | 3.6 ff (0.0 %) |
-| Area | 596.64 (100.0 %) |
-| Delay | 1001.73 ps (16.0 %) |
+| Metric | `alu_v1` | `alu_v2` |
+|---|---:|---:|
+| Wire load | `none` | `none` |
+| Gates | 601 (20.8 %) | 729 (19.5 %) |
+| Capacitance | 3.6 ff (0.0 %) | 3.6 ff (0.0 %) |
+| Area | 596.64 (100.0 %) | 740.81 (100.0 %) |
+| Delay | 1001.73 ps (16.0 %) | 562.02 ps (16.6 %) |
 
-These figures correspond to the ABC flow described above for the current ALU.
-Percentages are transcribed as reported. No timing constraints were applied.
+`alu_v1` uses Verilog arithmetic operators; `alu_v2` uses the grouped LCA.
+The LCA run reports lower delay and higher area and gate count. Percentages are
+transcribed as reported. No timing constraints were applied.
 
-## Critical Path Analysis
+## `alu_v1` Critical Path
 
 Reported path: primary input `b[1]` to primary output `result[31]`. The table
 preserves the cells, pins, arrival times, and I/O times from the ABC report.
@@ -131,11 +200,6 @@ The cell report alone does not identify whether the path belongs to addition,
 subtraction, or SLT: logic may be shared or restructured during synthesis and
 mapping. Isolating operations or comparing alternative implementations is
 needed to confirm its source.
-
-Future experiments can replace the carry implementation with another adder
-architecture and rerun the same ABC flow. For a valid comparison, keep the
-same library, mapping commands, and lack of constraints, and compare delay
-(`stime`), area, and cell count.
 
 | Level | Cell/pin | Type | I/O times (ps) | Arrival (ps) |
 |---:|---|---|---|---:|
@@ -181,3 +245,46 @@ At level 36, the report gives a required time of `-1000000000.0 ps` and slack
 of `-1000000960.0 ps`. These values are shown exactly as reported by ABC; since
 there are no timing constraints, they should not be interpreted as a violation
 of a target clock period.
+
+## `alu_v2` Critical Path
+
+The reported critical path is from primary input `a[1]` to primary output
+`result[0]`. The ABC report numbers the path from level 0 to level 19; level 2
+is not listed. The table preserves the reported cell pins, I/O timing values,
+and arrival times in picoseconds.
+
+| Level | Cell/pin | Type | I/O times (ps) | Arrival (ps) |
+|---:|---|---|---|---:|
+| 0 | Primary input `a[1]` | — | — | 0.0 |
+| 1 | `n304/B` | `XNOR2_X1` | `0.0, 0.0 -> 56.4` | 56.4 |
+| 3 | `n309/A3` | `NAND4_X1` | `58.8, 56.4, 56.4, 40.0 -> 92.2` | 92.2 |
+| 4 | `n321/A2` | `NAND4_X1` | `93.6, 92.2, 75.5, 84.9 -> 126.0` | 126.0 |
+| 5 | `n322/A1` | `NAND2_X1` | `126.0, 114.5 -> 146.1` | 146.1 |
+| 6 | `n323/A1` | `NAND2_X1` | `146.1, 128.8 -> 166.2` | 166.2 |
+| 7 | `n324/B1` | `AOI21_X1` | `148.8, 166.2, 112.9 -> 196.3` | 196.3 |
+| 8 | `n325/B1` | `OAI21_X1` | `164.6, 196.3, 124.0 -> 226.5` | 226.5 |
+| 9 | `n326/B1` | `AOI21_X1` | `163.5, 226.5, 153.3 -> 256.5` | 256.5 |
+| 10 | `n327/B1` | `OAI21_X1` | `183.9, 256.5, 143.2 -> 286.8` | 286.8 |
+| 11 | `n328/B1` | `AOI21_X1` | `181.4, 286.8, 178.2 -> 316.8` | 316.8 |
+| 12 | `n333/B1` | `OAI21_X1` | `55.2, 316.8, 62.7 -> 347.1` | 347.1 |
+| 13 | `n339/B1` | `AOI21_X1` | `40.0, 347.1, 84.1 -> 377.1` | 377.1 |
+| 14 | `n343/B1` | `OAI21_X1` | `35.3, 377.1, 66.6 -> 407.4` | 407.4 |
+| 15 | `n345/A1` | `NAND2_X1` | `407.4, 71.6 -> 427.5` | 427.5 |
+| 16 | `n346/A1` | `NAND3_X1` | `427.5, 0.0, 412.4 -> 452.9` | 452.9 |
+| 17 | `n349/A1` | `NAND3_X1` | `452.9, 437.6, 62.8 -> 478.3` | 478.3 |
+| 18 | `n354/A1` | `NAND4_X1` | `478.3, 125.7, 152.3, 110.8 -> 508.2` | 508.2 |
+| 19 | Primary output `result[0]` | — | — | — |
+
+The `stime` summary reports a delay of `562.02 ps`. The `print_delay` report
+gives a required time of `-1000000000.0 ps` and slack of `-1000000512.0 ps`.
+These values are reproduced as reported; without timing constraints, the
+required time and slack do not represent a target clock-period violation.
+
+## Conclusion
+
+The results show the trade-off of using the lookahead carry adder: the
+reported delay decreased from `1001.73 ps` to `562.02 ps`, a reduction of
+approximately 44% (nearly half). This improvement required more hardware:
+the mapped gate count increased from 601 to 729, and area increased from
+`596.64` to `740.81`. Thus, `alu_v2` achieves a substantially shorter
+combinational delay at the cost of increased gate count and area.
